@@ -89,7 +89,7 @@
   });
   window.addEventListener('keyup', e => keys[e.code] = false);
 
-  // toto umisti coinu na radnom platformu
+  //umisteni coinu na radnom platformu
   function spawnCoin() {
     // toto vybere tu nahodnou platformu
     const plat = platforms[Math.floor(Math.random() * platforms.length)];
@@ -138,6 +138,12 @@
 
     player.x += player.velX;
     player.y += player.velY;
+
+    // hranice mapy
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+    if (player.y < 0) player.y = 0;
+    if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
 
     // sbirani coinu
     if (checkCollision(player, coin)) {
