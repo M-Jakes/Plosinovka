@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Neon Speedrun - Collect 10</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: 'Segoe UI', sans-serif; color: white; }
+    canvas { display: block; margin: 0 auto; background: #000; }
+
+    .ui-overlay {
+      position: absolute; top: 20px; left: 20px;
+      background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid;
+    }
+
+    #leaderboard {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(20, 20, 20, 0.95); padding: 30px;
+      border: 2px solid #ffff; border-radius: 15px;
+      text-align: center; display: none;
+    }
+
+    table { width: 100%; margin-top: 15px; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #ffff; }
+    th { color: #ffff; }
+    button {
+      background: #ffff; border: none; padding: 10px 20px;
+      margin-top: 20px; cursor: pointer; font-weight: bold;
+    }
+    .highlight { color: #ffff; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div class="ui-overlay">
+  <div>Mince: <span id="coinCount" class="highlight">0</span> / 10</div>
+  <div>Čas: <span id="timer" class="highlight">0.00</span>s</div>
+</div>
+
+<div id="leaderboard">
+  <h1>Hra dokončena!</h1>
+  <p>Tvůj čas: <span id="finalTime" class="highlight"></span>s</p>
+  <h3>Nejlepší časy (Top 5):</h3>
+  <table id="scoreTable">
+    <thead><tr><th>Pořadí</th><th>Čas</th></tr></thead>
+    <tbody id="scoreBody"></tbody>
+  </table>
+  <button onclick="resetGame()">Hrát znovu</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  canvas.width = 800;
+  canvas.height = 600;
+
+  // Konstanty a  eproměnné
+  const gravity = 0.8;
+  const friction = 0.85;
+  let gameActive = true;
+  let collectedCount = 0;
+  let startTime = null;
+  let elapsedTime = 0;
+
+  const player = {
+    x: 100, y: 400, width: 30, height: 30,
+    velX: 0, velY: 0, speed: 5, jumpStrength: 15,
+    grounded: false, color: '#aa00ff'
+  };
+
+  const platforms = [
+    { x: 0, y: 570, width: 800, height: 30 },
+    { x: 200, y: 450, width: 150, height: 20 },
+    { x: 450, y: 360, width: 150, height: 20 },
+    { x: 100, y: 260, width: 150, height: 20 },
+    { x: 550, y: 240, width: 120, height: 20 },
+    { x: 350, y: 150, width: 120, height: 20 }
+  ];
+
+  let coin = { x: 0, y: 0, size: 10 };
+
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (!startTime && gameActive) startTime = Date.now(); // Start stopek prvním stiskem
+  });
+  window.addEventListener('keyup', e => keys[e.code] = false);
+
+  // Funkce pro umístění mince na náhodnou platformu
+  function spawnCoin() {
+    // Vybereme náhodnou platformu (kromě země, aby to byla výzva, nebo klidně i se zemí)
+    const plat = platforms[Math.floor(Math.random() * platforms.length)];
+    coin.x = plat.x + Math.random() * (plat.width - coin.size);
+    coin.y = plat.y - 25; // Kousek nad platformu
+  }
+
+  function checkCollision(objA, objB) {
+    const bW = objB.width || objB.size;
+    const bH = objB.height || objB.size;
+    return objA.x < objB.x + bW && objA.x + objA.width > objB.x &&
+            objA.y < objB.y + bH && objA.y + objA.height > objB.y;
+  }
+
+  function update() {
+    if (!gameActive) return;
+
+    // Časomíra
+    if (startTime) {
+      elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+      document.getElementById('timer').innerText = elapsedTime;
+    }
+
+    // Ovládání
+    if (keys['ArrowRight'] || keys['KeyD']) { if (player.velX < player.speed) player.velX++; }
+    if (keys['ArrowLeft'] || keys['KeyA']) { if (player.velX > -player.speed) player.velX--; }
+    if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
+      player.velY = -player.jumpStrength;
+      player.grounded = false;
+    }
+
+    player.velX *= friction;
+    player.velY += gravity;
+    player.grounded = false;
+
+    // Kolize s platformami
+    for (let plat of platforms) {
+      if (checkCollision(player, plat)) {
+        if (player.velY > 0 && player.y + player.height - player.velY <= plat.y) {
+          player.grounded = true;
+          player.velY = 0;
+          player.y = plat.y - player.height;
+        }
+      }
+    }
+
+    player.x += player.velX;
+    player.y += player.velY;
+
+    // Sběr mince
+    if (checkCollision(player, coin)) {
+      collectedCount++;
+      document.getElementById('coinCount').innerText = collectedCount;
+      if (collectedCount >= 10) {
+        finishGame();
+      } else {
+        spawnCoin();
+      }
+    }
+
+    // Hranice a pád
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+    if (player.y > canvas.height) { // Pád = penalizace času nebo reset pozice
+      player.x = 100; player.y = 400; player.velY = 0;
+    }
+
+    draw();
+    requestAnimationFrame(update);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Platformy
+    ctx.fillStyle = '#ffff';
+    platforms.forEach(plat => {
+      ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+
+      ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+    });
+
+    // Mince
+    ctx.fillStyle = '#ff0';
+
+    ctx.beginPath();
+    ctx.arc(coin.x + coin.size/2, coin.y + coin.size/2, coin.size, 0, Math.PI*2);
+    ctx.fill();
+
+    // Hráč
+    ctx.fillStyle = player.color;
+    ctx.shadowColor = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+    ctx.shadowBlur = 0;
+  }
+
+  function finishGame() {
+    gameActive = false;
+    const finalTime = parseFloat(elapsedTime);
+    document.getElementById('finalTime').innerText = finalTime;
+
+    // Uložení do LocalStorage
+    let scores = JSON.parse(localStorage.getItem('speedrunScores') || '[]');
+    scores.push(finalTime);
+    scores.sort((a, b) => a - b); // Seřazení od nejlepšího (nejmenšího) času
+    scores = scores.slice(0, 5); // Jen top 5
+    localStorage.setItem('speedrunScores', JSON.stringify(scores));
+
+    // Zobrazení tabulky
+    const tbody = document.getElementById('scoreBody');
+    tbody.innerHTML = '';
+    scores.forEach((s, index) => {
+      tbody.innerHTML += `<tr><td>${index + 1}.</td><td>${s}s</td></tr>`;
+    });
+
+    document.getElementById('leaderboard').style.display = 'block';
+  }
+
+  function resetGame() {
+    location.reload();
+  }
+
+  // Inicializace
+  spawnCoin();
+  update();
+</script>
+</body>
+</html>
